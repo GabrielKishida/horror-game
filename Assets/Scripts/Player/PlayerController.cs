@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Experimental.GlobalIllumination;
 using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
@@ -6,6 +7,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private PlayerInputActions inputActions;
     [SerializeField] private CharacterController characterController;
     [SerializeField] private Camera playerCamera;
+    [SerializeField] private Light flashlightObject;
 
     [SerializeField] private float walkSpeed = 6.0f;
 
@@ -14,8 +16,11 @@ public class PlayerController : MonoBehaviour
 
     [SerializeField] private float rotationX = 0.0f;
 
+    public bool isFlashlightOn = true;
+
     private InputAction move;
     private InputAction look;
+    private InputAction flashlight;
 
     private void RotateCamera()
     {
@@ -40,6 +45,15 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    private void FlashlightControl()
+    {
+        if (flashlight.WasPressedThisFrame())
+        {
+            isFlashlightOn = !isFlashlightOn;
+            flashlightObject.enabled = isFlashlightOn;
+        }
+    }
+
     void Awake()
     {
         inputActions = new PlayerInputActions();
@@ -49,17 +63,19 @@ public class PlayerController : MonoBehaviour
     {
         move = inputActions.Player.Move;
         look = inputActions.Player.Look;
+        flashlight = inputActions.Player.Light; 
 
         move.Enable();
         look.Enable();
+        flashlight.Enable();
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
 
-    // Update is called once per frame
     void Update()
     {
         RotateCamera();
         MovePlayer();
+        FlashlightControl();
     }
 }
