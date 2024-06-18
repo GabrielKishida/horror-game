@@ -5,6 +5,9 @@ TagManager:
   serializedVersion: 2
   tags:
   - Monster
+  - Key
+  - Note
+  - Door
   layers:
   - Default
   - TransparentFX

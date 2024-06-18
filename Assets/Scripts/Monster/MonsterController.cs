@@ -12,6 +12,7 @@ namespace Assets.Scripts
     {
         Following,
         Patrolling,
+        Killing,
     }
     public class MonsterController : MonoBehaviour
     {
@@ -22,39 +23,49 @@ namespace Assets.Scripts
         [SerializeField] private MonsterState state;
 
         [SerializeField] private Transform targetPlayer;
+        [SerializeField] private PlayerController targetPlayerController;
         [SerializeField] private float maxRayFollowingRange = 15.0f;
         [SerializeField] private float maxNoVisionFollowingRange = 15.0f;
         [SerializeField] private Vector3 lastSeenPlayerPosition;
-        [SerializeField] private NavMeshPath followPlayerPath;
+        [SerializeField] private NavMeshPath path;
         [SerializeField] private float calculatePathElapsedTime = 0.0f;
-        [SerializeField] private float calculatePathCooldown = 1.0f;
+        [SerializeField] private float calculatePathCooldown = 0.5f;
 
+        [SerializeField] private float acceleration = 10.0f;
         [SerializeField] private float patrollingMoveSpeed = 1.0f;
         [SerializeField] private float followingMoveSpeed = 3.0f;
 
-
-
-
         [SerializeField] NavMeshAgent navMeshAgent;
+        [SerializeField] SpotlightDetector spotlightDetector;
 
-        bool IsPlayerVisible()
+        private Vector3 startPosition;
+
+
+        public void ResetPosition()
+        {
+            transform.position = startPosition;
+        }
+
+        bool IsPlayerDetected()
         {
             Vector3 playerDirection = (targetPlayer.position - transform.position).normalized;
             RaycastHit hit;
             if (Physics.Raycast(transform.position, playerDirection, out hit, maxRayFollowingRange))
             {
-                Debug.Log(hit.collider.tag);
                 Debug.DrawRay(transform.position, playerDirection * hit.distance, Color.red);
                 if (hit.collider.CompareTag("Player"))
                 {
-                    lastSeenPlayerPosition = targetPlayer.position;
-                    return true;
+                   if (Vector3.Dot(playerDirection, transform.forward) > 0 || spotlightDetector.isIlluminated)
+                    {
+                        lastSeenPlayerPosition = targetPlayer.position;
+                        return true;
+                    } 
                 }
             }
             return false;
         }
 
-        void ChangeState(MonsterState newState)
+        public void ChangeState(MonsterState newState)
         {
             if (state == newState)
             {
@@ -62,28 +73,77 @@ namespace Assets.Scripts
             }
             else if (newState == MonsterState.Following)
             {
+                navMeshAgent.acceleration = acceleration;
                 navMeshAgent.speed = followingMoveSpeed;
             }
             else if (newState == MonsterState.Patrolling)
             {
+                navMeshAgent.acceleration = acceleration;
                 navMeshAgent.speed = patrollingMoveSpeed;
+            } else if (newState == MonsterState.Killing)
+            {
+                navMeshAgent.acceleration = 1000000000;
+                navMeshAgent.speed = 0f;
             }
             state = newState;
         }
 
-        float CalculatePathToPlayer ()
+        float CalculatePathToPlayer()
         {
             if(calculatePathElapsedTime > calculatePathCooldown)
             {
                 calculatePathElapsedTime = 0.0f;
-                navMeshAgent.CalculatePath(targetPlayer.transform.position, followPlayerPath);
+                navMeshAgent.CalculatePath(targetPlayer.position, path);
             }
             float totalDistance = 0.0f;
-            for (int i = 1; i < followPlayerPath.corners.Length; i++)
+            for (int i = 1; i < path.corners.Length; i++)
             {
-                totalDistance += Vector3.Distance(followPlayerPath.corners[i - 1], followPlayerPath.corners[i]);
+                totalDistance += Vector3.Distance(path.corners[i - 1], path.corners[i]);
             }
             return totalDistance;
+        }
+
+        float CalculatePathToPlayerLastSeen()
+        {
+            if (calculatePathElapsedTime > calculatePathCooldown)
+            {
+                calculatePathElapsedTime = 0.0f;
+                navMeshAgent.CalculatePath(lastSeenPlayerPosition, path);
+            }
+            float totalDistance = 0.0f;
+            for (int i = 1; i < path.corners.Length; i++)
+            {
+                totalDistance += Vector3.Distance(path.corners[i - 1], path.corners[i]);
+            }
+            return totalDistance;
+        }
+
+        float CalculatePathToWaypoint()
+        {
+            {
+                if (calculatePathElapsedTime > calculatePathCooldown)
+                {
+                    calculatePathElapsedTime = 0.0f;
+                    navMeshAgent.CalculatePath(waypoints[currentWaypointIndex].position, path);
+                }
+                float totalDistance = 0.0f;
+                for (int i = 1; i < path.corners.Length; i++)
+                {
+                    totalDistance += Vector3.Distance(path.corners[i - 1], path.corners[i]);
+                }
+                return totalDistance;
+            }
+        }
+
+        void GetNewWaypoint()
+        {
+            changeWaypointElapsedTime = 0.0f;
+            int newWaypointIndex = currentWaypointIndex;
+            while (newWaypointIndex == currentWaypointIndex)
+            {
+                newWaypointIndex = Random.Range(0, waypoints.Length);
+            }
+            currentWaypointIndex = newWaypointIndex;
         }
 
         void UpdateTimeVariables()
@@ -97,19 +157,13 @@ namespace Assets.Scripts
         {
             if (state == MonsterState.Patrolling)
             {
-                if (changeWaypointElapsedTime > changeWaypointCooldown)
+                if (changeWaypointElapsedTime > changeWaypointCooldown || CalculatePathToWaypoint() < 1.0f)
                 {
-                    changeWaypointElapsedTime = 0.0f;
-                    int newWaypointIndex = currentWaypointIndex;
-                    while (newWaypointIndex == currentWaypointIndex)
-                    {
-                        newWaypointIndex = Random.Range(0, waypoints.Length);
-                    }
-                    currentWaypointIndex = newWaypointIndex;
+                    GetNewWaypoint();
                 }
                 navMeshAgent.SetDestination(waypoints[currentWaypointIndex].position);
 
-                if (IsPlayerVisible())
+                if (IsPlayerDetected())
                 {
                     ChangeState(MonsterState.Following);
                 }
@@ -117,26 +171,43 @@ namespace Assets.Scripts
             else if (state == MonsterState.Following)
             {
                 navMeshAgent.SetDestination(lastSeenPlayerPosition);
-                if (!IsPlayerVisible())
+                if (!IsPlayerDetected())
                 {
-                    float distanceToPlayer = CalculatePathToPlayer();
-                    if (distanceToPlayer > maxNoVisionFollowingRange)
+                    if (targetPlayerController.isFlashlightOn) 
                     {
-                        ChangeState(MonsterState.Patrolling);
+                        navMeshAgent.SetDestination(targetPlayer.position);
+                        float distanceToPlayerPosition = CalculatePathToPlayer();
+                        if (distanceToPlayerPosition > maxNoVisionFollowingRange)
+                        {
+                            ChangeState(MonsterState.Patrolling);
+                        }
+                    }
+                    else
+                    {
+                        float distanceToPlayerLastSeen = CalculatePathToPlayerLastSeen();
+                        if (distanceToPlayerLastSeen < 2.0f)
+                        {
+                            ChangeState(MonsterState.Patrolling);
+                        }
                     }
                 }
+            } else if (state == MonsterState.Killing)
+            {
+                Vector3 rotateDirection = targetPlayer.position - transform.position;
+                transform.rotation = Quaternion.LookRotation(rotateDirection);
             }
         }
 
         void Start()
         {
             currentWaypointIndex = Random.Range(0, waypoints.Length);
+            startPosition = transform.position;
 
             changeWaypointElapsedTime = 0.0f;
             calculatePathElapsedTime = 0.0f;
 
             ChangeState(MonsterState.Patrolling);
-            followPlayerPath = new NavMeshPath();
+            path = new NavMeshPath();
         }
 
         void Update()
