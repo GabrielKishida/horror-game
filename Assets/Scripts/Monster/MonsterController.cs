@@ -12,6 +12,7 @@ namespace Assets.Scripts
     {
         Following,
         Patrolling,
+        Killing,
     }
     public class MonsterController : MonoBehaviour
     {
@@ -30,11 +31,20 @@ namespace Assets.Scripts
         [SerializeField] private float calculatePathElapsedTime = 0.0f;
         [SerializeField] private float calculatePathCooldown = 0.5f;
 
+        [SerializeField] private float acceleration = 10.0f;
         [SerializeField] private float patrollingMoveSpeed = 1.0f;
         [SerializeField] private float followingMoveSpeed = 3.0f;
 
         [SerializeField] NavMeshAgent navMeshAgent;
         [SerializeField] SpotlightDetector spotlightDetector;
+
+        private Vector3 startPosition;
+
+
+        public void ResetPosition()
+        {
+            transform.position = startPosition;
+        }
 
         bool IsPlayerDetected()
         {
@@ -55,7 +65,7 @@ namespace Assets.Scripts
             return false;
         }
 
-        void ChangeState(MonsterState newState)
+        public void ChangeState(MonsterState newState)
         {
             if (state == newState)
             {
@@ -63,11 +73,17 @@ namespace Assets.Scripts
             }
             else if (newState == MonsterState.Following)
             {
+                navMeshAgent.acceleration = acceleration;
                 navMeshAgent.speed = followingMoveSpeed;
             }
             else if (newState == MonsterState.Patrolling)
             {
+                navMeshAgent.acceleration = acceleration;
                 navMeshAgent.speed = patrollingMoveSpeed;
+            } else if (newState == MonsterState.Killing)
+            {
+                navMeshAgent.acceleration = 1000000000;
+                navMeshAgent.speed = 0f;
             }
             state = newState;
         }
@@ -168,21 +184,24 @@ namespace Assets.Scripts
                     }
                     else
                     {
-
                         float distanceToPlayerLastSeen = CalculatePathToPlayerLastSeen();
-                        Debug.Log(distanceToPlayerLastSeen);
                         if (distanceToPlayerLastSeen < 2.0f)
                         {
                             ChangeState(MonsterState.Patrolling);
                         }
                     }
                 }
+            } else if (state == MonsterState.Killing)
+            {
+                Vector3 rotateDirection = targetPlayer.position - transform.position;
+                transform.rotation = Quaternion.LookRotation(rotateDirection);
             }
         }
 
         void Start()
         {
             currentWaypointIndex = Random.Range(0, waypoints.Length);
+            startPosition = transform.position;
 
             changeWaypointElapsedTime = 0.0f;
             calculatePathElapsedTime = 0.0f;
