@@ -8,6 +8,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private CharacterController characterController;
     [SerializeField] private Camera playerCamera;
     [SerializeField] private Light flashlightObject;
+    [SerializeField] private HUD hud;
 
     [SerializeField] private float walkSpeed = 6.0f;
 
@@ -51,6 +52,30 @@ public class PlayerController : MonoBehaviour
         {
             isFlashlightOn = !isFlashlightOn;
             flashlightObject.enabled = isFlashlightOn;
+        }
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Key"))
+        {
+            hud.AddKey();
+            Destroy(other.gameObject);
+        } else if (other.CompareTag("Note"))
+        {
+            hud.AddNote();
+            Destroy(other.gameObject);
+        }
+        else if (other.CompareTag("Door"))
+        {
+            if (hud.keyCounter >= hud.keyMax)
+            {
+                hud.OpenDoor();
+                Destroy(other.gameObject);
+            } else
+            {
+                hud.LockedDoor();
+            }
         }
     }
 
